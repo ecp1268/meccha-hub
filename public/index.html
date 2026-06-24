@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Meccha Hub</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<style>
+:root {
+  --green:#1D9E75;--green-light:#E1F5EE;--green-dark:#085041;
+  --orange:#D85A30;--orange-light:#FAECE7;--orange-dark:#712B13;
+  --surface:#ffffff;--surface2:#f5f5f3;--surface3:#eeede9;
+  --border:rgba(0,0,0,0.10);--border2:rgba(0,0,0,0.18);
+  --text:#1a1a18;--text2:#666663;--text3:#999997;
+  --radius:10px;--radius-lg:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--surface2);color:var(--text)}
+
+/* LOBBY */
+#lobby{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem}
+.card{background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:2rem 2.5rem;width:100%;max-width:420px}
+.lobby-title{font-size:22px;font-weight:600;margin-bottom:4px}
+.lobby-sub{font-size:14px;color:var(--text2);margin-bottom:2rem}
+.field-label{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase}
+.lobby-input{width:100%;padding:10px 12px;font-size:15px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--surface2);color:var(--text);outline:none;margin-bottom:1rem}
+.lobby-input:focus{border-color:var(--green)}
+.lobby-btn{width:100%;padding:11px;font-size:15px;font-weight:500;border:none;border-radius:var(--radius);cursor:pointer;background:var(--text);color:white;margin-bottom:8px;transition:opacity 0.12s}
+.lobby-btn:hover{opacity:0.85}
+.lobby-btn:disabled{opacity:0.35;cursor:not-allowed}
+.lobby-btn-secondary{background:var(--surface2);color:var(--text);border:0.5px solid var(--border2)}
+.section-gap{height:1.5rem}
+
+/* APP */
+#app{display:none;height:100vh;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:0.5px solid var(--border2);flex-shrink:0;flex-wrap:wrap}
+.app-title{font-size:15px;font-weight:600}
+.badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:0.04em;text-transform:uppercase}
+.badge-hider{background:var(--green-light);color:var(--green-dark)}
+.badge-seeker{background:var(--orange-light);color:var(--orange-dark)}
+.badge-host{background:#f0e9ff;color:#4a2d8a}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+/* VOICE BAR */
+.voice-bar{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--surface);border-bottom:0.5px solid var(--border2);flex-shrink:0;overflow-x:auto}
+.voice-channel{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--border2);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all 0.12s;background:var(--surface2)}
+.voice-channel:hover{background:var(--surface3)}
+.voice-channel.active-vc{background:var(--green-light);border-color:var(--green);color:var(--green-dark)}
+.voice-channel.seeker-vc.active-vc{background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark)}
+.voice-channel.locked-vc{opacity:0.4;cursor:not-allowed}
+.mic-btn{width:32px;height:32px;border-radius:50%;border:0.5px solid var(--border2);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all 0.12s}
+.mic-btn.muted{background:#fee;border-color:#f99}
+.speaking-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.vc-members{display:flex;gap:4px;flex-wrap:wrap}
+.vc-chip{font-size:11px;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);display:flex;align-items:center;gap:3px}
+
+/* TABS */
+.tabs{display:flex;background:var(--surface);border-bottom:0.5px solid var(--border2);flex-shrink:0}
+.tab{flex:1;padding:10px 4px;text-align:center;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.12s;user-select:none;position:relative}
+.tab:hover{color:var(--text)}
+.tab.t-active-green{color:var(--green);border-bottom-color:var(--green)}
+.tab.t-active-dark{color:var(--text);border-bottom-color:var(--text)}
+.tab.t-locked{color:var(--text3);cursor:not-allowed}
+.unread-dot{position:absolute;top:6px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--orange)}
+
+/* PANELS */
+.panels{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.panel{display:none;flex:1;flex-direction:column;overflow:hidden}
+.panel.active{display:flex}
+
+/* CHAT */
+.msg-area{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.msg-wrap{display:flex;flex-direction:column}
+.msg-wrap.mine{align-items:flex-end}
+.msg-meta{font-size:11px;color:var(--text3);margin-bottom:3px;padding:0 4px}
+.bubble{max-width:78%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.45;word-break:break-word}
+.b-hider{background:var(--green-light);color:var(--green-dark);border-bottom-left-radius:4px}
+.b-hider-m{background:var(--green);color:white;border-bottom-right-radius:4px}
+.b-all{background:var(--surface3);color:var(--text);border-bottom-left-radius:4px}
+.b-all-m{background:var(--text);color:white;border-bottom-right-radius:4px}
+.b-system{background:transparent;color:var(--text3);font-size:12px;font-style:italic;align-self:center;padding:2px 0}
+.chat-bottom{padding:10px 12px;background:var(--surface);border-top:0.5px solid var(--border2);display:flex;gap:8px;align-items:flex-end}
+.chat-input{flex:1;padding:9px 13px;font-size:14px;border:0.5px solid var(--border2);border-radius:20px;background:var(--surface2);color:var(--text);outline:none;resize:none;max-height:100px;line-height:1.4}
+.chat-input:focus{border-color:var(--green)}
+.send-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;transition:opacity 0.12s}
+.send-btn:hover{opacity:0.8}
+.s-green{background:var(--green);color:white}
+.s-dark{background:var(--text);color:white}
+.locked-panel{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--text3);font-size:14px;text-align:center;padding:2rem}
+
+/* SPOTS */
+.spots-scroll{flex:1;overflow-y:auto;padding:12px 16px}
+.paste-zone{border:1.5px dashed var(--border2);border-radius:var(--radius-lg);padding:2rem;text-align:center;color:var(--text3);font-size:14px;cursor:pointer;transition:all 0.15s;margin-bottom:14px;background:var(--surface)}
+.paste-zone:hover,.paste-zone.drag-over{border-color:var(--green);background:var(--green-light);color:var(--green-dark)}
+.spots-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.spot-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius);overflow:hidden;position:relative}
+.spot-card img{width:100%;display:block;max-height:160px;object-fit:cover}
+.spot-footer{padding:8px 10px;display:flex;align-items:center;gap:6px}
+.spot-name{font-size:12px;font-weight:500;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mine-badge{position:absolute;top:6px;left:6px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--green);color:white}
+.del-btn{font-size:14px;cursor:pointer;color:var(--text3);border:none;background:none;padding:2px;flex-shrink:0}
+.del-btn:hover{color:var(--orange)}
+
+/* HOST PANEL */
+.host-scroll{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px}
+.member-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius)}
+.member-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0}
+.av-hider{background:var(--green-light);color:var(--green-dark)}
+.av-seeker{background:var(--orange-light);color:var(--orange-dark)}
+.member-name{font-size:14px;font-weight:500;flex:1}
+.member-role-label{font-size:12px;color:var(--text2)}
+.assign-btns{display:flex;gap:6px;margin-left:auto}
+.assign-btn{padding:5px 11px;font-size:12px;font-weight:500;border-radius:20px;border:0.5px solid var(--border2);background:var(--surface2);cursor:pointer;transition:all 0.12s}
+.assign-btn:hover{background:var(--surface3)}
+.assign-btn.active-h{background:var(--green-light);border-color:var(--green);color:var(--green-dark)}
+.assign-btn.active-s{background:var(--orange-light);border-color:var(--orange);color:var(--orange-dark)}
+.section-label{font-size:12px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em}
+
+/* TIMER */
+.timer-panel{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.timer-big{background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:2rem;text-align:center}
+.timer-num{font-size:64px;font-weight:700;letter-spacing:-2px;color:var(--text);font-variant-numeric:tabular-nums;line-height:1}
+.timer-num.warn{color:var(--orange)}
+.timer-sub{font-size:13px;color:var(--text2);margin-top:6px}
+.timer-controls{display:flex;gap:8px;margin-top:1.5rem;justify-content:center;flex-wrap:wrap}
+.t-btn{padding:9px 18px;font-size:14px;font-weight:500;border-radius:var(--radius);border:0.5px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;transition:all 0.12s}
+.t-btn:hover{background:var(--surface3)}
+.t-btn.primary{background:var(--text);color:white;border-color:transparent}
+.t-btn.primary:hover{opacity:0.85}
+.preset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.preset-btn{padding:10px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--surface);font-size:13px;cursor:pointer;text-align:center;transition:all 0.12s}
+.preset-btn:hover{background:var(--surface2)}
+.preset-label{font-size:11px;color:var(--text3);margin-bottom:2px}
+.preset-val{font-size:16px;font-weight:600}
+.phase-pill{font-size:11px;font-weight:500;padding:3px 9px;border-radius:20px}
+.ph-hide{background:var(--green-light);color:var(--green-dark)}
+.ph-seek{background:var(--orange-light);color:var(--orange-dark)}
+
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:500;opacity:0;transition:opacity 0.2s;pointer-events:none;z-index:999;white-space:nowrap}
+#toast.show{opacity:1}
+.config-note{font-size:12px;color:var(--orange);background:var(--orange-light);padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- CONFIG — fill these in after setup -->
+<script>
+const SUPABASE_URL   = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON  = 'YOUR_SUPABASE_ANON_KEY';
+const LIVEKIT_URL    = 'YOUR_LIVEKIT_WS_URL';      // e.g. wss://your-project.livekit.cloud
+const LIVEKIT_API    = 'YOUR_LIVEKIT_SERVER_URL';  // your token endpoint (see server.js)
+</script>
+
+<!-- LOBBY -->
+<div id="lobby">
+  <div class="card">
+    <div class="lobby-title">🦎 Meccha Hub</div>
+    <div class="lobby-sub">Hider & seeker channels, voice, and spot sharing</div>
+
+    <div id="config-warning" class="config-note" style="display:none">
+      ⚠️ Supabase / LiveKit not configured yet — running in local demo mode. See SETUP.md.
+    </div>
+
+    <div class="field-label">Your name</div>
+    <input class="lobby-input" id="name-input" placeholder="e.g. alex" maxlength="16"/>
+
+    <div id="host-section">
+      <button class="lobby-btn" id="create-btn" onclick="createRoom()">Create room (you're host)</button>
+    </div>
+    <div class="lobby-sub" style="text-align:center;margin-bottom:0.75rem">— or —</div>
+    <button class="lobby-btn lobby-btn-secondary" onclick="joinRoom()">Join existing room</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <span class="app-title">🦎 Meccha Hub</span>
+    <span class="badge badge-hider" id="role-badge">hider</span>
+    <span id="host-badge" class="badge badge-host" style="display:none">host</span>
+    <span class="phase-pill ph-hide" id="phase-pill">hiding</span>
+    <div class="topbar-right">
+      <span id="mic-toggle-btn" class="mic-btn" onclick="toggleMic()" title="Toggle mic">🎤</span>
+    </div>
+  </div>
+
+  <!-- VOICE BAR -->
+  <div class="voice-bar">
+    <span style="font-size:12px;color:var(--text2);flex-shrink:0">Voice:</span>
+    <div class="voice-channel" id="vc-hiders" onclick="joinVoice('hiders')">
+      🫥 Hiders <span class="vc-members" id="vc-hiders-members"></span>
+    </div>
+    <div class="voice-channel" id="vc-all" onclick="joinVoice('all')">
+      💬 Everyone <span class="vc-members" id="vc-all-members"></span>
+    </div>
+    <div class="voice-channel seeker-vc" id="vc-seeker" onclick="joinVoice('seeker')">
+      🔦 Seeker <span class="vc-members" id="vc-seeker-members"></span>
+    </div>
+    <span style="font-size:12px;color:var(--text3);margin-left:4px" id="vc-status">not connected</span>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab" id="tab-hider" onclick="switchTab('hider')">🫥 Hiders</div>
+    <div class="tab" id="tab-all" onclick="switchTab('all')">💬 Everyone</div>
+    <div class="tab" id="tab-spots" onclick="switchTab('spots')">📸 Spots</div>
+    <div class="tab" id="tab-host" onclick="switchTab('host')" style="display:none">⚙️ Host</div>
+    <div class="tab" id="tab-timer" onclick="switchTab('timer')">⏱ Timer</div>
+  </div>
+
+  <div class="panels">
+    <!-- HIDER CHAT -->
+    <div class="panel" id="panel-hider">
+      <div class="msg-area" id="msgs-hider"></div>
+      <div class="chat-bottom" id="hider-input-area"></div>
+    </div>
+
+    <!-- ALL CHAT -->
+    <div class="panel" id="panel-all">
+      <div class="msg-area" id="msgs-all"></div>
+      <div class="chat-bottom">
+        <textarea class="chat-input" id="input-all" rows="1" placeholder="Message everyone…" onkeydown="chatKey(event,'all')"></textarea>
+        <button class="send-btn s-dark" onclick="sendChat('all')">➤</button>
+      </div>
+    </div>
+
+    <!-- SPOTS -->
+    <div class="panel" id="panel-spots">
+      <div class="spots-scroll">
+        <div class="paste-zone" id="paste-zone" onclick="document.getElementById('file-in').click()"
+          ondragover="dzOver(event)" ondragleave="dzLeave()" ondrop="dzDrop(event)">
+          <div style="font-size:28px;margin-bottom:8px">📷</div>
+          <strong>Upload your hiding spot</strong>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">tap · drag & drop · or Ctrl+V to paste screenshot</div>
+        </div>
+        <input type="file" id="file-in" accept="image/*" style="display:none" onchange="fileChosen(event)"/>
+        <div class="spots-grid" id="spots-grid"></div>
+      </div>
+    </div>
+
+    <!-- HOST PANEL -->
+    <div class="panel" id="panel-host">
+      <div class="host-scroll">
+        <div class="section-label" style="margin-bottom:8px">Assign roles</div>
+        <div id="members-list"></div>
+        <div style="height:1rem"></div>
+        <div class="section-label" style="margin-bottom:8px">Game phase</div>
+        <div style="display:flex;gap:8px">
+          <button class="t-btn" onclick="setPhase('hide')">🫥 Set hiding phase</button>
+          <button class="t-btn" onclick="setPhase('seek')">🔦 Set seeking phase</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIMER -->
+    <div class="panel" id="panel-timer">
+      <div class="timer-panel">
+        <div class="timer-big">
+          <div class="timer-num" id="timer-display">2:00</div>
+          <div class="timer-sub" id="timer-sub">hiding phase</div>
+          <div class="timer-controls">
+            <button class="t-btn primary" id="timer-start-btn" onclick="toggleTimer()">▶ Start</button>
+            <button class="t-btn" onclick="resetTimer()">↺ Reset</button>
+            <button class="t-btn" id="phase-btn" onclick="switchPhase()">Switch to seeking →</button>
+          </div>
+        </div>
+        <div class="section-label">Quick presets</div>
+        <div class="preset-grid">
+          <div class="preset-btn" onclick="setTimer(60)"><div class="preset-label">hide</div><div class="preset-val">1:00</div></div>
+          <div class="preset-btn" onclick="setTimer(90)"><div class="preset-label">hide</div><div class="preset-val">1:30</div></div>
+          <div class="preset-btn" onclick="setTimer(120)"><div class="preset-label">hide</div><div class="preset-val">2:00</div></div>
+          <div class="preset-btn" onclick="setTimer(120)"><div class="preset-label">seek</div><div class="preset-val">2:00</div></div>
+          <div class="preset-btn" onclick="setTimer(180)"><div class="preset-label">seek</div><div class="preset-val">3:00</div></div>
+          <div class="preset-btn" onclick="setTimer(300)"><div class="preset-label">seek</div><div class="preset-val">5:00</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── GLOBALS ──
+let sb = null;
+let myName = '', myRole = 'hider', isHost = false;
+let roomId = 'meccha-main';
+let currentTab = 'all';
+let timerSecs = 120, timerRunning = false, timerInterval = null, timerPhase = 'hide';
+let spots = [], spotCounter = 0;
+let members = {};  // id -> {name, role}
+let myId = crypto.randomUUID();
+let livekitRoom = null;
+let currentVoice = null;
+let micMuted = false;
+let demoMode = false;
+
+// ── INIT ──
+window.onload = function() {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+    document.getElementById('config-warning').style.display = 'block';
+    demoMode = true;
+  } else {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  }
+};
+
+// ── LOBBY ──
+async function createRoom() {
+  const name = document.getElementById('name-input').value.trim();
+  if (!name) { toast('Enter your name'); return; }
+  myName = name;
+  isHost = true;
+  myRole = 'host';
+  await enterApp();
+}
+
+async function joinRoom() {
+  const name = document.getElementById('name-input').value.trim();
+  if (!name) { toast('Enter your name'); return; }
+  myName = name;
+  isHost = false;
+  myRole = 'hider'; // host assigns real role
+  await enterApp();
+}
+
+async function enterApp() {
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+
+  const roleBadge = document.getElementById('role-badge');
+  roleBadge.textContent = isHost ? 'host' : myRole;
+  roleBadge.className = 'badge ' + (myRole === 'seeker' ? 'badge-seeker' : 'badge-hider');
+  if (isHost) document.getElementById('host-badge').style.display = '';
+
+  buildHiderInput();
+  if (isHost) {
+    document.getElementById('tab-host').style.display = '';
+  }
+
+  if (!demoMode) {
+    await initSupabase();
+  } else {
+    seedDemoData();
+  }
+
+  switchTab(isHost ? 'host' : 'all');
+  document.addEventListener('paste', handlePaste);
+}
+
+// ── SUPABASE ──
+async function initSupabase() {
+  // Announce presence
+  await sb.from('members').upsert({id: myId, name: myName, role: myRole, room: roomId, online: true});
+
+  // Subscribe to members
+  sb.channel('members-'+roomId)
+    .on('postgres_changes', {event:'*', schema:'public', table:'members', filter:'room=eq.'+roomId}, payload => {
+      const m = payload.new || payload.old;
+      if (payload.eventType === 'DELETE') { delete members[m.id]; }
+      else { members[m.id] = {name: m.name, role: m.role}; }
+      renderMembers();
+    }).subscribe();
+
+  // Subscribe to messages
+  sb.channel('messages-'+roomId)
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages', filter:'room=eq.'+roomId}, payload => {
+      const msg = payload.new;
+      if (msg.channel === 'hider' && myRole === 'seeker') return;
+      appendMsg(msg.channel, msg.sender, msg.text, msg.sender_id === myId);
+    }).subscribe();
+
+  // Subscribe to game state (phase changes from host)
+  sb.channel('gamestate-'+roomId)
+    .on('postgres_changes', {event:'*', schema:'public', table:'gamestate', filter:'room=eq.'+roomId}, payload => {
+      const gs = payload.new;
+      if (gs.phase) applyPhase(gs.phase);
+      if (gs.roles) applyRoles(gs.roles);
+    }).subscribe();
+
+  // Subscribe to spots
+  sb.channel('spots-'+roomId)
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'spots', filter:'room=eq.'+roomId}, payload => {
+      const s = payload.new;
+      if (myRole !== 'seeker') addSpotToGrid(s.id, s.data_url, s.sender, s.sender_id === myId);
+    }).subscribe();
+
+  // Load existing members
+  const {data: existingMembers} = await sb.from('members').select('*').eq('room', roomId).eq('online', true);
+  if (existingMembers) existingMembers.forEach(m => { members[m.id] = {name: m.name, role: m.role}; });
+  renderMembers();
+
+  // Load recent messages
+  const {data: recentMsgs} = await sb.from('messages').select('*').eq('room', roomId).order('created_at', {ascending: true}).limit(100);
+  if (recentMsgs) recentMsgs.forEach(msg => {
+    if (msg.channel === 'hider' && myRole === 'seeker') return;
+    appendMsg(msg.channel, msg.sender, msg.text, msg.sender_id === myId);
+  });
+
+  window.addEventListener('beforeunload', () => {
+    sb.from('members').update({online: false}).eq('id', myId);
+  });
+}
+
+async function dbSendChat(channel, text) {
+  if (!sb) return;
+  await sb.from('messages').insert({room: roomId, channel, sender: myName, sender_id: myId, text});
+}
+
+async function dbUpdateRole(targetId, role) {
+  if (!sb) return;
+  await sb.from('members').update({role}).eq('id', targetId);
+  // Also update gamestate roles map
+  const roles = {};
+  Object.entries(members).forEach(([id, m]) => { roles[id] = id === targetId ? role : m.role; });
+  await sb.from('gamestate').upsert({room: roomId, roles});
+}
+
+async function dbSetPhase(phase) {
+  if (!sb) return;
+  await sb.from('gamestate').upsert({room: roomId, phase});
+}
+
+async function dbUploadSpot(dataUrl) {
+  if (!sb) return;
+  await sb.from('spots').insert({room: roomId, sender: myName, sender_id: myId, data_url: dataUrl});
+}
+
+// ── VOICE (LIVEKIT) ──
+async function joinVoice(channel) {
+  // Check access
+  if (channel === 'hiders' && myRole === 'seeker') { toast('Seekers can\'t join hider voice'); return; }
+  if (channel === 'seeker' && myRole !== 'seeker' && !isHost) { toast('Only seekers can join seeker voice'); return; }
+
+  if (demoMode) { toast('Voice needs LiveKit — see SETUP.md'); return; }
+
+  try {
+    // Leave current if any
+    if (livekitRoom) { await livekitRoom.disconnect(); livekitRoom = null; }
+
+    // Get token from your server
+    const res = await fetch(`${LIVEKIT_API}/token?room=${roomId}-${channel}&identity=${encodeURIComponent(myName)}`);
+    const {token} = await res.json();
+
+    livekitRoom = new LivekitClient.Room();
+    await livekitRoom.connect(LIVEKIT_URL, token);
+    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
+
+    currentVoice = channel;
+    micMuted = false;
+    document.getElementById('mic-toggle-btn').textContent = '🎤';
+    document.getElementById('vc-status').textContent = 'in ' + channel;
+
+    // Highlight active channel
+    ['hiders','all','seeker'].forEach(c => {
+      document.getElementById('vc-'+c).classList.toggle('active-vc', c === channel);
+    });
+
+    livekitRoom.on(LivekitClient.RoomEvent.ParticipantConnected, updateVcMembers);
+    livekitRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected, updateVcMembers);
+    updateVcMembers();
+    toast('Joined ' + channel + ' voice');
+  } catch(e) {
+    toast('Voice error: ' + e.message);
+    console.error(e);
+  }
+}
+
+function updateVcMembers() {
+  if (!livekitRoom || !currentVoice) return;
+  const names = [myName, ...Array.from(livekitRoom.participants.values()).map(p => p.identity)];
+  const html = names.map(n => `<span class="vc-chip">${esc(n)}</span>`).join('');
+  document.getElementById('vc-'+currentVoice+'-members').innerHTML = html;
+}
+
+async function toggleMic() {
+  if (!livekitRoom) { toast('Join a voice channel first'); return; }
+  micMuted = !micMuted;
+  await livekitRoom.localParticipant.setMicrophoneEnabled(!micMuted);
+  document.getElementById('mic-toggle-btn').textContent = micMuted ? '🔇' : '🎤';
+  document.getElementById('mic-toggle-btn').className = 'mic-btn' + (micMuted ? ' muted' : '');
+}
+
+// ── CHAT ──
+function buildHiderInput() {
+  const area = document.getElementById('hider-input-area');
+  if (myRole !== 'seeker') {
+    area.innerHTML = `<textarea class="chat-input" id="input-hider" rows="1" placeholder="Message hiders only…" onkeydown="chatKey(event,'hider')"></textarea>
+      <button class="send-btn s-green" onclick="sendChat('hider')">➤</button>`;
+    document.getElementById('tab-spots').style.display = '';
+  } else {
+    document.getElementById('panel-hider').innerHTML = `<div class="locked-panel"><div style="font-size:32px">🔒</div><div style="font-weight:500">Hiders only</div><div style="font-size:13px;color:var(--text3)">You're the seeker — this channel is hidden from you</div></div>`;
+    document.getElementById('tab-spots').style.display = 'none';
+    document.getElementById('tab-hider').className = 'tab t-locked';
+  }
+}
+
+function chatKey(e, channel) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(channel); }
+}
+
+async function sendChat(channel) {
+  const inp = document.getElementById('input-'+channel);
+  if (!inp || !inp.value.trim()) return;
+  const text = inp.value.trim();
+  inp.value = '';
+  appendMsg(channel, myName, text, true);
+  if (!demoMode) await dbSendChat(channel, text);
+}
+
+function appendMsg(channel, sender, text, mine) {
+  const area = document.getElementById('msgs-'+channel);
+  if (!area) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap' + (mine ? ' mine' : '');
+  let bClass = '';
+  if (channel === 'hider') bClass = mine ? 'b-hider-m' : 'b-hider';
+  else bClass = mine ? 'b-all-m' : 'b-all';
+  wrap.innerHTML = (!mine ? `<div class="msg-meta">${esc(sender)}</div>` : '') +
+    `<div class="bubble ${bClass}">${esc(text)}</div>`;
+  area.appendChild(wrap);
+  area.scrollTop = area.scrollHeight;
+  if (currentTab !== channel && !mine) {
+    const tab = document.getElementById('tab-'+channel);
+    if (tab && !tab.querySelector('.unread-dot')) {
+      const dot = document.createElement('span');
+      dot.className = 'unread-dot';
+      tab.appendChild(dot);
+    }
+  }
+}
+
+// ── TABS ──
+function switchTab(tab) {
+  if (tab === 'hider' && myRole === 'seeker') return;
+  if (tab === 'spots' && myRole === 'seeker') return;
+  currentTab = tab;
+  ['hider','all','spots','host','timer'].forEach(t => {
+    const panel = document.getElementById('panel-'+t);
+    if (panel) panel.classList.remove('active');
+    const tabEl = document.getElementById('tab-'+t);
+    if (tabEl && !tabEl.classList.contains('t-locked')) tabEl.className = 'tab' + (tabEl.style.display === 'none' ? '' : '');
+  });
+  const panel = document.getElementById('panel-'+tab);
+  if (panel) panel.classList.add('active');
+  const activeClass = (tab === 'hider' || tab === 'spots') ? 't-active-green' : 't-active-dark';
+  const tabEl = document.getElementById('tab-'+tab);
+  if (tabEl) {
+    tabEl.className = 'tab ' + activeClass;
+    const dot = tabEl.querySelector('.unread-dot');
+    if (dot) dot.remove();
+  }
+  if (tab === 'hider') setTimeout(() => { const a = document.getElementById('msgs-hider'); if(a) a.scrollTop = a.scrollHeight; }, 50);
+  if (tab === 'all') setTimeout(() => { const a = document.getElementById('msgs-all'); if(a) a.scrollTop = a.scrollHeight; }, 50);
+}
+
+// ── HOST CONTROLS ──
+function renderMembers() {
+  const list = document.getElementById('members-list');
+  if (!list) return;
+  const myEntry = {};
+  myEntry[myId] = {name: myName, role: myRole};
+  const all = {...myEntry, ...members};
+  list.innerHTML = Object.entries(all).map(([id, m]) => {
+    const isSelf = id === myId;
+    const initials = m.name.slice(0,2).toUpperCase();
+    const avClass = m.role === 'seeker' ? 'av-seeker' : 'av-hider';
+    const hActive = m.role !== 'seeker' ? 'active-h' : '';
+    const sActive = m.role === 'seeker' ? 'active-s' : '';
+    return `<div class="member-row">
+      <div class="member-avatar ${avClass}">${initials}</div>
+      <div>
+        <div class="member-name">${esc(m.name)}${isSelf?' (you)':''}</div>
+        <div class="member-role-label">${m.role}</div>
+      </div>
+      <div class="assign-btns">
+        <button class="assign-btn ${hActive}" onclick="assignRole('${id}','hider')">🫥 Hider</button>
+        <button class="assign-btn ${sActive}" onclick="assignRole('${id}','seeker')">🔦 Seeker</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function assignRole(id, role) {
+  if (!isHost) return;
+  if (members[id]) members[id].role = role;
+  if (id === myId) myRole = role;
+  renderMembers();
+  if (!demoMode) await dbUpdateRole(id, role);
+  const name = id === myId ? myName : (members[id]?.name || '?');
+  appendMsg('all', '🎮 system', `${name} is now ${role === 'seeker' ? '🔦 seeker' : '🫥 hider'}`, false);
+  toast(name + ' → ' + role);
+}
+
+function applyPhase(phase) {
+  timerPhase = phase;
+  const pill = document.getElementById('phase-pill');
+  pill.textContent = phase === 'hide' ? 'hiding' : 'seeking';
+  pill.className = 'phase-pill ' + (phase === 'hide' ? 'ph-hide' : 'ph-seek');
+  document.getElementById('timer-sub').textContent = phase === 'hide' ? 'hiding phase' : 'seeking phase';
+}
+
+async function setPhase(phase) {
+  applyPhase(phase);
+  if (!demoMode) await dbSetPhase(phase);
+  toast('Phase set to ' + phase);
+}
+
+function applyRoles(roles) {
+  Object.entries(roles).forEach(([id, role]) => {
+    if (members[id]) members[id].role = role;
+    if (id === myId) {
+      myRole = role;
+      const badge = document.getElementById('role-badge');
+      badge.textContent = role;
+      badge.className = 'badge ' + (role === 'seeker' ? 'badge-seeker' : 'badge-hider');
+      buildHiderInput();
+    }
+  });
+  renderMembers();
+}
+
+// ── SPOTS ──
+function handlePaste(e) {
+  if (myRole === 'seeker') return;
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.startsWith('image')) {
+      const blob = items[i].getAsFile();
+      readAndAddSpot(blob, 'pasted spot');
+      toast('Spot added!');
+      switchTab('spots');
+      break;
+    }
+  }
+}
+
+function fileChosen(e) {
+  const f = e.target.files[0];
+  if (f) readAndAddSpot(f, f.name.replace(/\.[^.]+$/,''));
+  e.target.value = '';
+}
+
+function dzOver(e) { e.preventDefault(); document.getElementById('paste-zone').classList.add('drag-over'); }
+function dzLeave() { document.getElementById('paste-zone').classList.remove('drag-over'); }
+function dzDrop(e) { e.preventDefault(); dzLeave(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image')) readAndAddSpot(f, f.name); }
+
+function readAndAddSpot(blob, label) {
+  const reader = new FileReader();
+  reader.onload = async function(ev) {
+    const dataUrl = ev.target.result;
+    spotCounter++;
+    addSpotToGrid(spotCounter, dataUrl, myName, true);
+    if (!demoMode) await dbUploadSpot(dataUrl);
+  };
+  reader.readAsDataURL(blob);
+}
+
+function addSpotToGrid(id, dataUrl, sender, mine) {
+  spots.push({id, dataUrl, sender, mine});
+  renderSpots();
+}
+
+function renderSpots() {
+  document.getElementById('spots-grid').innerHTML = spots.map(s =>
+    `<div class="spot-card">
+      ${s.mine ? '<div class="mine-badge">mine</div>' : ''}
+      <img src="${s.dataUrl}" alt="hiding spot by ${esc(s.sender)}"/>
+      <div class="spot-footer">
+        <span class="spot-name">${esc(s.sender)}</span>
+        ${s.mine ? `<button class="del-btn" onclick="delSpot(${s.id})">✕</button>` : ''}
+      </div>
+    </div>`
+  ).join('');
+}
+
+function delSpot(id) { spots = spots.filter(s => s.id !== id); renderSpots(); }
+
+// ── TIMER ──
+function fmt(s) { const m = Math.floor(s/60), sc = s%60; return m+':'+(sc<10?'0':'')+sc; }
+function toggleTimer() {
+  if (timerRunning) {
+    clearInterval(timerInterval); timerRunning = false;
+    document.getElementById('timer-start-btn').textContent = '▶ Start';
+  } else {
+    timerRunning = true;
+    document.getElementById('timer-start-btn').textContent = '⏸ Pause';
+    timerInterval = setInterval(() => {
+      if (timerSecs <= 0) {
+        clearInterval(timerInterval); timerRunning = false;
+        document.getElementById('timer-start-btn').textContent = '▶ Start';
+        toast(timerPhase === 'hide' ? '⏰ Hide time\'s up!' : '⏰ Time\'s up!');
+        return;
+      }
+      timerSecs--;
+      const el = document.getElementById('timer-display');
+      el.textContent = fmt(timerSecs);
+      el.className = 'timer-num' + (timerSecs <= 15 ? ' warn' : '');
+    }, 1000);
+  }
+}
+function resetTimer() {
+  clearInterval(timerInterval); timerRunning = false;
+  timerSecs = timerPhase === 'hide' ? 120 : 180;
+  document.getElementById('timer-display').textContent = fmt(timerSecs);
+  document.getElementById('timer-display').className = 'timer-num';
+  document.getElementById('timer-start-btn').textContent = '▶ Start';
+}
+function setTimer(s) {
+  clearInterval(timerInterval); timerRunning = false; timerSecs = s;
+  document.getElementById('timer-display').textContent = fmt(s);
+  document.getElementById('timer-display').className = 'timer-num';
+  document.getElementById('timer-start-btn').textContent = '▶ Start';
+}
+function switchPhase() {
+  clearInterval(timerInterval); timerRunning = false;
+  document.getElementById('timer-start-btn').textContent = '▶ Start';
+  const newPhase = timerPhase === 'hide' ? 'seek' : 'hide';
+  setPhase(newPhase);
+  timerSecs = newPhase === 'hide' ? 120 : 180;
+  document.getElementById('timer-display').textContent = fmt(timerSecs);
+  document.getElementById('timer-display').className = 'timer-num';
+  document.getElementById('phase-btn').textContent = newPhase === 'hide' ? 'Switch to seeking →' : '← Switch to hiding';
+}
+
+// ── DEMO DATA ──
+function seedDemoData() {
+  members = {
+    'demo1': {name: 'sam', role: 'hider'},
+    'demo2': {name: 'taylor', role: 'hider'},
+    'demo3': {name: 'jordan', role: 'seeker'},
+  };
+  renderMembers();
+  if (myRole !== 'seeker') {
+    appendMsg('hider', 'sam', 'im painting myself to match the bookshelf rn 😭', false);
+    appendMsg('hider', 'taylor', 'kitchen corner gang', false);
+  }
+  appendMsg('all', 'jordan', 'ready when you all are', false);
+  appendMsg('all', 'sam', 'give us like 30 more seconds', false);
+}
+
+// ── UTILS ──
+function esc(t) { return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>
